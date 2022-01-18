@@ -30,12 +30,26 @@ func main() {
 	root.PersistentFlags().IntVar(&limit, "limit", 0, "a limit on the number of repos to scan")
 	root.PersistentFlags().String("out", "", "an optional file to append to, default is stdout")
 
-	root.AddCommand(setPreActions(ciScanCmd(), listReposCmd(), listAndScanCmd(), listGoMods(), queryGitHubCmd())...)
+	cmds := setPreActions(map[*cobra.Command][]csvWriter{
+		ciScanCmd():      repoStatusFields,
+		listReposCmd():   repoFields,
+		listAndScanCmd(): repoStatusFields,
+		listGoMods():     goModFields,
+		queryGitHubCmd(): nil,
+	})
+	root.AddCommand(cmds...)
+
 	panicOnErr(root.Execute())
 }
 
-func setPreActions(commands ...*cobra.Command) []*cobra.Command {
-	for _, c := range commands {
+func setPreActions(commands map[*cobra.Command][]csvWriter) []*cobra.Command {
+	cmds := []*cobra.Command{}
+	for c, fields := range commands {
+		var useCSV bool
+		if len(fields) > 0 {
+			c.Flags().BoolVar(&useCSV, "csv", false, "if we should encode with csv")
+		}
+
 		c.PreRun = func(cmd *cobra.Command, args []string) {
 			ghToken = os.Getenv("GITHUB_ACCESS_TOKEN")
 			if cliToken, _ := cmd.Flags().GetString("token"); cliToken != "" {
@@ -51,12 +65,16 @@ func setPreActions(commands ...*cobra.Command) []*cobra.Command {
 				out = f
 			}
 			enc = buildJSONEncoder(out)
+			if useCSV {
+				enc = buildCSVEncoder(out, fields)
+			}
 		}
 		c.PostRun = func(cmd *cobra.Command, args []string) {
 			panicOnErr(out.Close())
 		}
+		cmds = append(cmds, c)
 	}
-	return commands
+	return cmds
 }
 
 func panicOnErr(err error) {

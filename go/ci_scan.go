@@ -14,17 +14,12 @@ import (
 
 func ciScanCmd() *cobra.Command {
 	var file string
-	var useCSV bool
 	cmd := cobra.Command{
 		Use: "scan-ci [repo]",
 		Run: func(cmd *cobra.Command, args []string) {
-			if useCSV {
-				enc = buildCSVEncoder(out, repoStatusFields)
-			}
 			walkReposForCI(append(args, loadRepos(file)...))
 		},
 	}
-	cmd.Flags().BoolVar(&useCSV, "csv", false, "if we should encode with csv")
 	cmd.Flags().StringVar(&file, "file", "", "a file of new line delimited repos to get")
 	return &cmd
 }

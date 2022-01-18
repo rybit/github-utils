@@ -27,6 +27,18 @@ func listRepos() {
 	})
 }
 
+var repoFields = []csvWriter{
+	{"name", repoField(func(r repo) interface{} { return r.Name })},
+	{"archived", repoField(func(r repo) interface{} { return r.Archived })},
+	{"private", repoField(func(r repo) interface{} { return r.Private })},
+}
+
+func repoField(f func(r repo) interface{}) fieldExtractor {
+	return func(obj interface{}) interface{} {
+		return f(obj.(repo))
+	}
+}
+
 type repo struct {
 	Name          string
 	Archived      bool
