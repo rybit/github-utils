@@ -30,23 +30,23 @@ func main() {
 	root.PersistentFlags().IntVar(&limit, "limit", 0, "a limit on the number of repos to scan")
 	root.PersistentFlags().String("out", "", "an optional file to append to, default is stdout")
 
-	cmds := setPreActions(map[*cobra.Command][]csvWriter{
-		ciScanCmd():      repoStatusFields,
-		listReposCmd():   repoFields,
-		listAndScanCmd(): repoStatusFields,
-		listGoMods():     goModFields,
-		queryGitHubCmd(): nil,
+	cmds := setPreActions(map[*cobra.Command]bool{
+		ciScanCmd():      true,
+		listReposCmd():   true,
+		listAndScanCmd(): true,
+		listGoMods():     true,
+		queryGitHubCmd(): false,
 	})
 	root.AddCommand(cmds...)
 
 	panicOnErr(root.Execute())
 }
 
-func setPreActions(commands map[*cobra.Command][]csvWriter) []*cobra.Command {
+func setPreActions(commands map[*cobra.Command]bool) []*cobra.Command {
 	cmds := []*cobra.Command{}
-	for c, fields := range commands {
+	for c, csvEnabled := range commands {
 		var useCSV bool
-		if len(fields) > 0 {
+		if csvEnabled {
 			c.Flags().BoolVar(&useCSV, "csv", false, "if we should encode with csv")
 		}
 
@@ -66,7 +66,7 @@ func setPreActions(commands map[*cobra.Command][]csvWriter) []*cobra.Command {
 			}
 			enc = buildJSONEncoder(out)
 			if useCSV {
-				enc = buildCSVEncoder(out, fields)
+				enc = buildCSVEncoder(out)
 			}
 		}
 		c.PostRun = func(cmd *cobra.Command, args []string) {

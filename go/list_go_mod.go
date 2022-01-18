@@ -24,6 +24,14 @@ type goModRef struct {
 	Private bool
 }
 
+func (r goModRef) Fields() []csvField {
+	return []csvField{
+		{"name", r.Repo},
+		{"version", r.Version},
+		{"private", r.Private},
+	}
+}
+
 func searchReposForGoMod() {
 	readRepoPages(func(r repo) error {
 		if entry := queryForFileContent(r.Name, "go.mod"); entry != nil {

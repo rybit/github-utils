@@ -99,6 +99,25 @@ type repoStatus struct {
 	Actions     []string
 }
 
+func (s repoStatus) Fields() []csvField {
+	return []csvField{
+		{"name", s.Name},
+		{"archived", s.Archived},
+		{"code owners", strings.Join(s.CodeOwners, ",")},
+		{"jenkinsfile", s.Jenkinsfile},
+		{"circle ci", s.CircleCI},
+		{"default branch", s.DefaultBranch},
+		{"last push", s.PushedAt},
+		{"private", s.Private},
+		{"fossa", s.Fossa},
+		{"renovate", s.Renovate},
+		{"stalebot", s.Stalebot},
+		{"netlify.toml", s.RootTOML},
+		{"security", s.Security},
+		{"github actions", strings.Join(s.Actions, ",")},
+	}
+}
+
 func cleanCodeowners(e fileEntry) []string {
 	owners := map[string]struct{}{}
 	curOwner := []byte{}

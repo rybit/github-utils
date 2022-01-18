@@ -27,15 +27,14 @@ func listRepos() {
 	})
 }
 
-var repoFields = []csvWriter{
-	{"name", repoField(func(r repo) interface{} { return r.Name })},
-	{"archived", repoField(func(r repo) interface{} { return r.Archived })},
-	{"private", repoField(func(r repo) interface{} { return r.Private })},
-}
-
-func repoField(f func(r repo) interface{}) fieldExtractor {
-	return func(obj interface{}) interface{} {
-		return f(obj.(repo))
+func (r repo) Fields() []csvField {
+	return []csvField{
+		{"name", r.Name},
+		{"private", r.Private},
+		{"archived", r.Archived},
+		{"disabled", r.Disabled},
+		{"default_branch", r.DefaultBranch},
+		{"url", r.HTMLURL},
 	}
 }
 
@@ -44,8 +43,26 @@ type repo struct {
 	Archived      bool
 	Private       bool
 	PushedAt      time.Time `json:"pushed_at"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 	DefaultBranch string    `json:"default_branch"`
+	ID            int
+	FullName      string `json:"full_name"`
+	Owner         struct {
+		Login     string
+		ID        int
+		Type      string
+		SiteAdmin bool `json:"site_admin"`
+	}
+	HTMLURL         string `json:"html_url"`
+	Description     string
+	Fork            bool
+	Size            int
+	OpenIssuesCount int `json:"open_issues_count"`
+	Disabled        bool
+	Language        interface{} // idk what this is going to be
 }
+
 type repoPageIter func(r repo) error
 
 func readRepoPages(iter repoPageIter) {
