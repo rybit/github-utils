@@ -31,11 +31,12 @@ func main() {
 	root.PersistentFlags().String("out", "", "an optional file to append to, default is stdout")
 
 	cmds := setPreActions(map[*cobra.Command]bool{
-		ciScanCmd():      true,
-		listReposCmd():   true,
-		listAndScanCmd(): true,
-		listGoMods():     true,
-		queryGitHubCmd(): false,
+		listProjectsCmd(): false,
+		ciScanCmd():       true,
+		listReposCmd():    true,
+		listAndScanCmd():  true,
+		listGoMods():      true,
+		queryGitHubCmd():  false,
 	})
 	root.AddCommand(cmds...)
 
