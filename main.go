@@ -38,6 +38,8 @@ func main() {
 
 		projectCmd(),
 
+		transferRepoCmd(),
+
 		supportCSV(ciScanCmd()),
 		supportCSV(listReposCmd()),
 		supportCSV(listAndScanCmd()),

@@ -11,11 +11,14 @@ import (
 
 func listReposCmd() *cobra.Command {
 	cmd := cobra.Command{
-		Use: "list-repos",
+		Use: "repos",
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use: "list",
 		Run: func(cmd *cobra.Command, args []string) {
 			listRepos()
 		},
-	}
+	})
 	return &cmd
 }
 

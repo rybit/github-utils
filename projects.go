@@ -47,7 +47,7 @@ func projectCmd() *cobra.Command {
 		migrateProjectCmd(),
 	)
 
-	cmd.AddCommand(projectQLCommand())
+	// cmd.AddCommand(projectQLCommand())
 
 	return &cmd
 }
