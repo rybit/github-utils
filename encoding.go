@@ -12,6 +12,16 @@ import (
 type encoder func(obj interface{}) error
 
 func buildJSONEncoder(out io.WriteCloser) encoder {
+	if pretty {
+		return func(obj interface{}) error {
+			bs, err := json.MarshalIndent(obj, "", "  ")
+			if err != nil {
+				return err
+			}
+			_, err = out.Write(append(bs, '\n'))
+			return err
+		}
+	}
 	writer := json.NewEncoder(out)
 	return func(obj interface{}) error {
 		return writer.Encode(&obj)

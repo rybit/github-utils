@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -66,21 +64,13 @@ type repo struct {
 type repoPageIter func(r repo) error
 
 func readRepoPages(iter repoPageIter) {
-	page := 1
 	reposProcessed := 0
-	for {
-		code, raw := queryGitHub(fmt.Sprintf("/orgs/netlify/repos?per_page=100&page=%d", page), "")
-		if code != http.StatusOK {
-			log.Info("Got a !200 response, assuming we got all the repos")
-			return
-		}
-
+	queryByPage("/orgs/netlify/repos", func(raw []byte) bool {
 		repos := []repo{}
-		log.Info("fetched a new page of repos", zap.Int("count", len(repos)), zap.Int("page", page))
 		panicOnErr(json.Unmarshal(raw, &repos))
 		for _, r := range repos {
 			if skipArchive && r.Archived {
-				log.Info("skipping archive repo",
+				log.Debug("skipping archive repo",
 					zap.String("repo", r.Name),
 				)
 				continue
@@ -88,20 +78,16 @@ func readRepoPages(iter repoPageIter) {
 			if !strings.HasPrefix(r.Name, "netlify/") {
 				r.Name = "netlify/" + r.Name
 			}
-			log.Info("starting to process repo",
+			log.Debug("starting to process repo",
 				zap.String("repo", r.Name),
 			)
 			panicOnErr(iter(r))
 			reposProcessed++
 			if limit != 0 && reposProcessed >= limit {
 				log.Info("Reached configured limit	")
-				return
+				return false
 			}
 		}
-		if len(repos) == 0 {
-			log.Info("No repos found, shutting down")
-			return
-		}
-		page += 1
-	}
+		return len(repos) != 0
+	})
 }

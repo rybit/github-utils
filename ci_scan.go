@@ -49,7 +49,7 @@ func queryRepoForCI(repo repo) repoStatus {
 		state.CodeOwners = cleanCodeowners(*entry)
 	}
 
-	if code, raw := queryGitHub(fmt.Sprintf("repos/%s/contents/.github/workflows", repo.Name), ""); code == http.StatusOK {
+	if code, raw := queryGitHub(fmt.Sprintf("repos/%s/contents/.github/workflows", repo.Name)); code == http.StatusOK {
 		ghaFiles := make([]fileEntry, 0)
 		panicOnErr(json.Unmarshal(raw, &ghaFiles))
 		for _, file := range ghaFiles {

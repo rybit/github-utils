@@ -2,11 +2,7 @@ package main
 
 import (
 	"io"
-	"net/http"
 	"os"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -14,126 +10,108 @@ import (
 
 var ghToken string
 var log *zap.Logger
-var skipArchive, verbose bool
+var skipArchive, verbose, pretty bool
 var limit int
 var enc encoder
 var out io.WriteCloser = os.Stdout
 
+var ghQueries int
+
 func main() {
 	var err error
-	log, err = zap.NewDevelopment()
+	cfg := zap.NewDevelopmentConfig()
+	cfg.Level.SetLevel(zap.InfoLevel)
+	cfg.DisableCaller = true
+	log, err = cfg.Build()
 	panicOnErr(err)
+
 	root := cobra.Command{}
 	root.PersistentFlags().StringP("token", "t", "", "the github access token")
 	root.PersistentFlags().BoolVar(&skipArchive, "skip-archived", false, "if we should skip archived repos")
 	root.PersistentFlags().BoolVar(&verbose, "verbose", false, "if we log the paths we query")
+	root.PersistentFlags().BoolVar(&pretty, "pretty", false, "if the json should be pretty")
 	root.PersistentFlags().IntVar(&limit, "limit", 0, "a limit on the number of repos to scan")
 	root.PersistentFlags().String("out", "", "an optional file to append to, default is stdout")
 
-	cmds := setPreActions(map[*cobra.Command]bool{
-		listProjectsCmd(): false,
-		ciScanCmd():       true,
-		listReposCmd():    true,
-		listAndScanCmd():  true,
-		listGoMods():      true,
-		queryGitHubCmd():  false,
-	})
+	cmds := setPreActions(
+		queryGitHubCmd(),
+
+		projectCmd(),
+
+		supportCSV(ciScanCmd()),
+		supportCSV(listReposCmd()),
+		supportCSV(listAndScanCmd()),
+		supportCSV(listGoMods()),
+	)
 	root.AddCommand(cmds...)
 
 	panicOnErr(root.Execute())
 }
 
-func setPreActions(commands map[*cobra.Command]bool) []*cobra.Command {
-	cmds := []*cobra.Command{}
-	for c, csvEnabled := range commands {
-		var useCSV bool
-		if csvEnabled {
-			c.Flags().BoolVar(&useCSV, "csv", false, "if we should encode with csv")
-		}
-
-		c.PreRun = func(cmd *cobra.Command, args []string) {
-			ghToken = os.Getenv("GITHUB_ACCESS_TOKEN")
-			if cliToken, _ := cmd.Flags().GetString("token"); cliToken != "" {
-				ghToken = cliToken
-			}
-			if ghToken == "" {
-				panic("must provide the token via env var GITHUB_ACCESS_TOKEN or the flag")
-			}
-			outName, _ := cmd.Flags().GetString("out")
-			if outName != "" {
-				f, err := os.OpenFile(outName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
-				panicOnErr(err)
-				out = f
-			}
-			enc = buildJSONEncoder(out)
-			if useCSV {
-				enc = buildCSVEncoder(out)
-			}
-		}
-		c.PostRun = func(cmd *cobra.Command, args []string) {
-			panicOnErr(out.Close())
-		}
-		cmds = append(cmds, c)
+func setPreActions(commands ...*cobra.Command) []*cobra.Command {
+	prerun := func(cmd *cobra.Command, args []string) {
+		setVerbosity(cmd)
+		setToken(cmd)
+		setOutput(cmd)
 	}
-	return cmds
+
+	postrun := func(cmd *cobra.Command, args []string) {
+		panicOnErr(out.Close())
+		log.Sugar().Debugf("did %d queries to github", ghQueries)
+	}
+
+	for _, c := range commands {
+		if c.Run != nil {
+			c.PreRun = prerun
+			c.PostRun = postrun
+		}
+		if c.HasSubCommands() {
+			setPreActions(c.Commands()...)
+		}
+	}
+	return commands
 }
 
-func panicOnErr(err error) {
-	if err != nil {
-		panic(err)
+func setToken(cmd *cobra.Command) {
+	ghToken = os.Getenv("GITHUB_ACCESS_TOKEN")
+	if cliToken, _ := cmd.Flags().GetString("token"); cliToken != "" {
+		ghToken = cliToken
+	}
+	if ghToken == "" {
+		panic("must provide the token via env var GITHUB_ACCESS_TOKEN or the flag")
 	}
 }
 
-func queryGitHub(path, accept string) (int, []byte) {
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-
-	url := "https://api.github.com" + path
-	if verbose {
-		log.Info("querying github", zap.String("url", url))
-	}
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	panicOnErr(err)
-	if accept == "" {
-		// accept = "application/vnd.github.inertia-preview+json"
-		accept = "application/vnd.github.v3+json"
-	}
-	req.Header.Set("Accept", accept)
-	req.SetBasicAuth("rybit", ghToken)
-	rsp, err := http.DefaultClient.Do(req)
-	panicOnErr(err)
-
-	if remaining := rsp.Header.Get("x-ratelimit-remaining"); remaining != "" {
-		left, err := strconv.Atoi(remaining)
+func setOutput(cmd *cobra.Command) {
+	outName, _ := cmd.Flags().GetString("out")
+	if outName != "" {
+		f, err := os.OpenFile(outName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 		panicOnErr(err)
-		if left == 0 {
-			epoch, err := strconv.Atoi(rsp.Header.Get("x-ratelimit-reset"))
-			panicOnErr(err)
-			ts := time.Unix(int64(epoch), 0)
-			log.Warn("Rate limit exceeded - going to wait for it.",
-				zap.Time("resume", ts),
-				zap.Duration("wait", ts.Sub(time.Now())),
-			)
-			tick := time.NewTicker(time.Minute)
-			for {
-				<-tick.C
-				log.Info("Still waiting for the right time",
-					zap.Time("resume", ts),
-					zap.Duration("wait", ts.Sub(time.Now())),
-				)
+		out = f
+	}
+	enc = buildJSONEncoder(out)
+}
 
-				if time.Now().After(ts) {
-					break
-				}
-			}
-			log.Info("Resuming, making that github query now")
-			return queryGitHub(path, accept)
+func supportCSV(cmd *cobra.Command) *cobra.Command {
+	var useCSV bool
+	cmd.Flags().BoolVar(&useCSV, "csv", false, "if we should encode with csv")
+	setup := cmd.PreRun
+	cmd.PreRun = func(cmd *cobra.Command, args []string) {
+		setup(cmd, args)
+		if useCSV {
+			enc = buildCSVEncoder(out)
 		}
 	}
+	return cmd
+}
 
-	defer rsp.Body.Close()
-	res, err := io.ReadAll(rsp.Body)
-	panicOnErr(err)
-	return rsp.StatusCode, res
+func setVerbosity(cmd *cobra.Command) {
+	if verbose {
+		cfg := zap.NewDevelopmentConfig()
+		cfg.Level.SetLevel(zap.DebugLevel)
+		cfg.DisableCaller = true
+		dlog, err := cfg.Build()
+		panicOnErr(err)
+		log = dlog
+	}
 }
